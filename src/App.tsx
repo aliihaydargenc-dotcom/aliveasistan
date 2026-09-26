@@ -1,9 +1,11 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUpRight,
   CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Download,
   FileAudio,
   FileText,
@@ -15,12 +17,15 @@ import {
   MoreHorizontal,
   NotebookPen,
   Pause,
+  Palette,
   Pin,
   Plus,
   QrCode,
   Search,
+  Shapes,
   Sparkles,
   Square,
+  StickyNote,
   Trash2,
   Wrench,
   X,
@@ -37,6 +42,15 @@ const navItems: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: "voice", label: "Ses", icon: Mic },
   { id: "calendar", label: "Takvim", icon: CalendarDays },
   { id: "tools", label: "Araçlar", icon: Wrench },
+];
+
+type ThemeId = "violet" | "sunset" | "ocean" | "forest";
+
+const themeOptions: Array<{ id: ThemeId; label: string }> = [
+  { id: "violet", label: "Violet" },
+  { id: "sunset", label: "Sunset" },
+  { id: "ocean", label: "Ocean" },
+  { id: "forest", label: "Forest" },
 ];
 
 function ownerPermissions(userId: string) {
@@ -66,6 +80,12 @@ function App() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState("");
+  const [theme, setTheme] = useState<ThemeId>(() => (localStorage.getItem("alive-theme") as ThemeId) || "violet");
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("alive-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     account
@@ -118,6 +138,7 @@ function App() {
             <NavButton key={item.id} active={view === item.id} onClick={() => setView(item.id)} icon={<item.icon size={19} />} label={item.label} />
           ))}
         </nav>
+        <PersonalSpaceCard theme={theme} onThemeChange={setTheme} />
         <div className="sidebar-footer">
           <div className="avatar">{(user.name || user.$id || user.email || "A").slice(0, 1).toLocaleUpperCase("tr-TR")}</div>
           <div className="user-copy"><strong>{user.name || user.$id || "Kişisel alan"}</strong><span>{user.email || "Güvenli oturum"}</span></div>
@@ -126,7 +147,7 @@ function App() {
       </aside>
 
       <main className="main-stage">
-        <header className="mobile-header glass"><Brand compact /><button className="icon-button" onClick={logout} aria-label="Çıkış"><LogOut size={18} /></button></header>
+        <header className="mobile-header glass"><Brand compact /><div className="mobile-header-actions"><ThemePicker theme={theme} onChange={setTheme} compact /><button className="icon-button" onClick={logout} aria-label="Çıkış"><LogOut size={18} /></button></div></header>
         {error && <div className="notice error-notice"><span>{error}</span><button onClick={() => setError("")}><X size={16} /></button></div>}
         {loadingData && <div className="sync-pill"><LoaderCircle className="spin" size={14} /> Eşitleniyor</div>}
 
@@ -167,16 +188,29 @@ function Login({ onLogin }: { onLogin: (user: AppUser) => void }) {
   return (
     <div className="login-page">
       <div className="ambient ambient-a" /><div className="ambient ambient-b" />
-      <section className="login-card glass">
-        <div className="login-mark"><Sparkles size={25} /></div>
-        <div><p className="eyebrow">Kişisel çalışma alanı</p><h1>Alive Asistan</h1><p className="muted">Notların, ses kayıtların, takvimin ve araçların tek güvenli alanda.</p></div>
-        <form onSubmit={submit} className="login-form">
-          <label>E-posta<input autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <label>Parola<input autoComplete="current-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required /></label>
-          {error && <p className="form-error">{error}</p>}
-          <button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <LockKeyhole size={18} />}{busy ? "Giriş yapılıyor" : "Giriş yap"}</button>
-        </form>
-      </section>
+      <div className="login-shell">
+        <section className="login-showcase">
+          <div className="login-showcase-orb"><Sparkles size={30} /></div>
+          <p className="eyebrow">Sadece sana ait</p>
+          <h1>Düşüncelerinin<br />yaşadığı yer.</h1>
+          <p>Not, ses, takvim ve küçük araçlar. Tek ekranda değil; tek bir kişisel atmosferde.</p>
+          <div className="login-preview-stack" aria-hidden="true">
+            <div className="preview-card preview-card-a"><StickyNote size={17} /><span>Bir fikri yakala</span></div>
+            <div className="preview-card preview-card-b"><Mic size={17} /><span>Sesle kaydet</span></div>
+            <div className="preview-card preview-card-c"><CalendarDays size={17} /><span>Gününe bırak</span></div>
+          </div>
+        </section>
+        <section className="login-card glass">
+          <div className="login-card-top"><div className="login-mark"><Sparkles size={23} /></div><div><strong>Alive</strong><span>Kişisel alan</span></div></div>
+          <div><h2>Tekrar hoş geldin.</h2><p className="muted">Alanına devam etmek için giriş yap.</p></div>
+          <form onSubmit={submit} className="login-form">
+            <label>E-posta<input autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+            <label>Parola<input autoComplete="current-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required /></label>
+            {error && <p className="form-error">{error}</p>}
+            <button className="primary-button login-submit" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <LockKeyhole size={18} />}{busy ? "Giriş yapılıyor" : "Alanıma gir"}<ArrowUpRight size={17} /></button>
+          </form>
+        </section>
+      </div>
     </div>
   );
 }
@@ -184,26 +218,49 @@ function Login({ onLogin }: { onLogin: (user: AppUser) => void }) {
 function HomeView({ user, notes, events, onView, onRefresh }: { user: AppUser; notes: Note[]; events: CalendarEvent[]; onView: (v: ViewId) => void; onRefresh: () => Promise<void> }) {
   const upcoming = events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 3);
   const pinned = notes.filter((n) => n.pinned).slice(0, 3);
+  const recent = notes.slice(0, 4);
   const today = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+  const firstName = (user.name || user.$id || "sen").split(" ")[0];
   return (
-    <>
-      <PageHeader eyebrow={today} title={`Merhaba, ${(user.name || user.$id || "sen").split(" ")[0]}`} description="Bugün neyi yakalamak istiyorsun?" />
-      <section className="quick-grid">
-        <QuickAction icon={<NotebookPen />} title="Yeni not" text="Düşünceyi kaybetmeden yaz." onClick={() => onView("notes")} />
-        <QuickAction accent icon={<Mic />} title="Sesle yakala" text="Konuş, metni düzenle ve sakla." onClick={() => onView("voice")} />
-        <QuickAction icon={<CalendarDays />} title="Takvime ekle" text="Bir tarihi hemen işaretle." onClick={() => onView("calendar")} />
-        <QuickAction icon={<QrCode />} title="Hızlı araç" text="QR ve PDF araçlarını aç." onClick={() => onView("tools")} />
+    <div className="home-view">
+      <section className="home-hero">
+        <div className="hero-orb hero-orb-a" /><div className="hero-orb hero-orb-b" />
+        <div className="hero-copy">
+          <p className="eyebrow hero-eyebrow">{today}</p>
+          <h1>Merhaba {firstName}.<br /><span>Burası senin alanın.</span></h1>
+          <p className="hero-description">Aklına geleni bırak. Sonra düzenlersin.</p>
+          <div className="hero-stats">
+            <span><strong>{notes.length}</strong> not</span>
+            <span><strong>{pinned.length}</strong> sabit</span>
+            <span><strong>{upcoming.length}</strong> yaklaşan</span>
+          </div>
+        </div>
+        <div className="hero-visual" aria-hidden="true">
+          <div className="hero-glass-card hero-note"><StickyNote /><span>Fikirler</span><b>{notes.length}</b></div>
+          <div className="hero-glass-card hero-calendar"><CalendarDays /><span>Sıradaki</span><b>{upcoming[0] ? new Date(upcoming[0].startAt).getDate() : "—"}</b></div>
+          <div className="hero-spark"><Sparkles /></div>
+        </div>
       </section>
-      <section className="two-col">
-        <Panel title="Sabit notlar" action={<button className="text-button" onClick={() => onView("notes")}>Tümü</button>}>
+      <section className="quick-grid">
+        <QuickAction icon={<NotebookPen />} title="Yaz" text="Yeni bir not aç." onClick={() => onView("notes")} />
+        <QuickAction accent icon={<Mic />} title="Konuş" text="Sesle yakala." onClick={() => onView("voice")} />
+        <QuickAction icon={<CalendarDays />} title="Planla" text="Takvime bırak." onClick={() => onView("calendar")} />
+        <QuickAction icon={<Shapes />} title="Üret" text="Araç merkezini aç." onClick={() => onView("tools")} />
+      </section>
+      <section className="home-section-head"><div><p className="eyebrow">Şimdi</p><h2>Günün akışı</h2></div><button className="refresh-icon-button" onClick={() => void onRefresh()} aria-label="Verileri yenile"><Clock3 size={17} /></button></section>
+      <section className="two-col home-flow-grid">
+        <Panel title="Sabitlerin" action={<button className="text-button" onClick={() => onView("notes")}>Tümü <ArrowUpRight size={13} /></button>}>
           {pinned.length ? pinned.map((n) => <MiniRow key={n.$id} icon={<Pin size={15} />} title={n.title} meta={formatDate(n.$updatedAt)} />) : <EmptyMini text="Henüz sabitlenmiş not yok." />}
         </Panel>
-        <Panel title="Yaklaşanlar" action={<button className="text-button" onClick={() => onView("calendar")}>Takvim</button>}>
+        <Panel title="Yaklaşanlar" action={<button className="text-button" onClick={() => onView("calendar")}>Takvim <ArrowUpRight size={13} /></button>}>
           {upcoming.length ? upcoming.map((e) => <MiniRow key={e.$id} icon={<CalendarDays size={15} />} title={e.title} meta={formatDate(e.startAt)} />) : <EmptyMini text="Yaklaşan takvim kaydı yok." />}
         </Panel>
       </section>
-      <button className="refresh-link" onClick={() => void onRefresh()}>Verileri yenile</button>
-    </>
+      <section className="home-section-head recent-head"><div><p className="eyebrow">Hatırla</p><h2>Son bıraktıkların</h2></div><button className="text-button" onClick={() => onView("notes")}>Notlara git <ArrowUpRight size={13} /></button></section>
+      <section className="recent-note-grid">
+        {recent.length ? recent.map((n, index) => <button className={`recent-note-card tone-${index + 1}`} key={n.$id} onClick={() => onView("notes")}><div className="recent-note-top"><span>{n.pinned ? <Pin size={14} /> : <StickyNote size={14} />}</span><time>{formatDate(n.$updatedAt)}</time></div><strong>{n.title || "İsimsiz not"}</strong><p>{(n.plainText || n.body || "Boş not").slice(0, 120)}</p><ArrowUpRight className="recent-note-arrow" size={17} /></button>) : <div className="recent-empty glass-card"><Sparkles /><span>İlk notunu bıraktığında burada görünür.</span></div>}
+      </section>
+    </div>
   );
 }
 
@@ -216,6 +273,7 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
   const [savedAt, setSavedAt] = useState<string | null>(initialNote?.$updatedAt || null);
   const [saveError, setSaveError] = useState("");
   const [mobileEditor, setMobileEditor] = useState(false);
+  const [filterMode, setFilterMode] = useState<"all" | "pinned">("all");
   const savedIdsRef = useRef(new Set(notes.map((n) => n.$id)));
   const lastSavedRef = useRef(new Map(notes.map((n) => [n.$id, JSON.stringify({ title: n.title || "", body: n.body || "", pinned: !!n.pinned })])));
   const queuedSaveRef = useRef(new Map<string, string>());
@@ -231,7 +289,7 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
-  const filtered = notes.filter((n) => `${n.title} ${n.plainText || n.body || ""}`.toLocaleLowerCase("tr-TR").includes(query.toLocaleLowerCase("tr-TR")));
+  const filtered = notes.filter((n) => (filterMode === "all" || n.pinned) && `${n.title} ${n.plainText || n.body || ""}`.toLocaleLowerCase("tr-TR").includes(query.toLocaleLowerCase("tr-TR")));
   const selected = selectedId ? notes.find((n) => n.$id === selectedId) || null : null;
 
   const newNote = () => {
@@ -321,12 +379,13 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
 
   return (
     <>
-      <PageHeader eyebrow="Not defteri" title="Düşüncelerin için ferah bir alan" description="Hızlı yaz, ara, sabitle ve cihazların arasında aynı notlara ulaş." action={<button className="primary-button compact-btn" onClick={newNote}><Plus size={17} /> Yeni not</button>} />
+      <PageHeader eyebrow="Notlar" title="Aklında kalmasın." description={`${notes.length} not · ${notes.filter((n) => n.pinned).length} sabit`} action={<button className="primary-button compact-btn" onClick={newNote}><Plus size={17} /> Yeni not</button>} />
       <div className={`notes-workspace ${mobileEditor ? "editor-open" : ""}`}>
         <section className="notes-list glass-card">
           <div className="search-box"><Search size={17} /><input placeholder="Notlarda ara" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+          <div className="note-filter-row"><button className={filterMode === "all" ? "active" : ""} onClick={() => setFilterMode("all")}>Tümü <span>{notes.length}</span></button><button className={filterMode === "pinned" ? "active" : ""} onClick={() => setFilterMode("pinned")}><Pin size={13} /> Sabit <span>{notes.filter((n) => n.pinned).length}</span></button></div>
           <div className="note-cards">
-            {filtered.map((n) => <button key={n.$id} className={`note-card ${selectedId === n.$id ? "active" : ""}`} onClick={() => choose(n)}><div className="note-card-title"><strong>{n.title}</strong>{n.pinned && <Pin size={14} />}</div><p>{(n.plainText || n.body || "Boş not").slice(0, 100)}</p><span>{formatDate(n.$updatedAt)}</span></button>)}
+            {filtered.map((n) => <button key={n.$id} className={`note-card ${selectedId === n.$id ? "active" : ""}`} onClick={() => choose(n)}><div className="note-card-title"><strong>{n.title}</strong>{n.pinned && <Pin size={14} />}</div><p>{(n.plainText || n.body || "Boş not").slice(0, 100)}</p><div className="note-card-meta"><span>{n.kind === "voice" ? <><Mic size={11} /> Sesli</> : <><StickyNote size={11} /> Not</>}</span><time>{formatDate(n.$updatedAt)}</time></div></button>)}
             {!filtered.length && <EmptyMini text="Bu aramada not bulunamadı." />}
           </div>
         </section>
@@ -454,6 +513,7 @@ function VoiceView({ user, onSaved }: { user: AppUser; onSaved: () => Promise<vo
       <PageHeader eyebrow="Sesli not" title="Konuşurken düşünceyi kaçırma" description="Kayıt sırasında oluşan metni durdurduktan sonra düzenleyebilir, sonra tek not olarak saklayabilirsin." />
       <section className="voice-stage glass-card">
         <div className={`record-orbit ${recording ? "recording" : ""}`}><button className="record-button" onClick={recording ? stop : start} aria-label={recording ? "Kaydı durdur" : "Kaydı başlat"}>{recording ? <Square size={30} fill="currentColor" /> : <Mic size={34} />}</button></div>
+        <div className={`voice-bars ${recording ? "active" : ""}`} aria-hidden="true">{Array.from({ length: 15 }, (_, i) => <span key={i} style={{ animationDelay: `${i * 70}ms` }} />)}</div>
         <div className="record-status"><strong>{recording ? "Dinliyorum" : blob ? "Kayıt hazır" : "Kayda hazır"}</strong><span>{Math.floor(elapsed / 60).toString().padStart(2, "0")}:{(elapsed % 60).toString().padStart(2, "0")}</span></div>
         <textarea className="transcript-box" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Konuşma metni burada oluşur. Kayıt sonrasında dilediğin gibi düzenleyebilirsin." />
         {message && <p className="form-error">{message}</p>}
@@ -485,11 +545,11 @@ function CalendarView({ user, events, onRefresh }: { user: AppUser; events: Cale
     <>
       <PageHeader eyebrow="Takvim" title="Günlerini görünür hale getir" description="Ay görünümünde tarihleri işaretle; önemli kayıtlar notlarınla aynı kişisel alanda kalsın." />
       <section className="calendar-card glass-card">
-        <div className="calendar-head"><button className="icon-button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft /></button><h2>{monthName}</h2><button className="icon-button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight /></button></div>
+        <div className="calendar-head"><button className="icon-button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Önceki ay"><ChevronLeft /></button><h2>{monthName}</h2><button className="icon-button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Sonraki ay"><ChevronRight /></button></div>
         <div className="weekday-row">{["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => <span key={d}>{d}</span>)}</div>
         <div className="month-grid">{cells.map((d, i) => d ? <button key={keyFor(d)} className={`day-cell ${keyFor(d) === keyFor(new Date()) ? "today" : ""}`} onClick={() => openDay(d)}><span className="day-number">{d.getDate()}</span><div className="event-dots">{(eventsByDay[keyFor(d)] || []).slice(0, 3).map((ev) => <span key={ev.$id} title={ev.title}>{ev.title}</span>)}</div></button> : <div key={`blank-${i}`} className="day-cell blank" />)}</div>
       </section>
-      <Panel title="Yaklaşan kayıtlar">{events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 8).map((ev) => <div className="event-row" key={ev.$id}><div><strong>{ev.title}</strong><span>{formatDate(ev.startAt)}</span></div><button className="icon-button danger" onClick={() => void remove(ev.$id)}><Trash2 size={16} /></button></div>)}</Panel>
+      <Panel title="Yaklaşan kayıtlar">{events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 8).map((ev) => <div className="event-row" key={ev.$id}><div><strong>{ev.title}</strong><span>{formatDate(ev.startAt)}</span></div><button className="icon-button danger" onClick={() => void remove(ev.$id)} aria-label={`${ev.title} kaydını sil`}><Trash2 size={16} /></button></div>)}</Panel>
       {selectedDay && <Modal onClose={() => setSelectedDay(null)} title={`${selectedDay.getDate()} ${new Intl.DateTimeFormat("tr-TR", { month: "long" }).format(selectedDay)}`}><form className="stack-form" onSubmit={add}><label>Başlık<input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus /></label><label>Tarih ve saat<input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} required /></label><label>Not<textarea rows={4} value={note} onChange={(e) => setNote(e.target.value)} /></label><button className="primary-button" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />} Takvime ekle</button></form></Modal>}
     </>
   );
@@ -608,7 +668,16 @@ function QuickAction({ icon, title, text, onClick, accent = false }: { icon: Rea
 function Panel({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) { return <section className="panel glass-card"><div className="panel-head"><h2>{title}</h2>{action}</div><div className="panel-body">{children}</div></section>; }
 function MiniRow({ icon, title, meta }: { icon: ReactNode; title: string; meta: string }) { return <div className="mini-row"><div className="mini-icon">{icon}</div><div><strong>{title}</strong><span>{meta}</span></div></div>; }
 function EmptyMini({ text }: { text: string }) { return <div className="empty-mini"><Sparkles size={17} /><span>{text}</span></div>; }
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) { return <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target) onClose(); }}><section className="modal glass-card"><div className="modal-head"><h2>{title}</h2><button className="icon-button" onClick={onClose}><X size={18} /></button></div>{children}</section></div>; }
+function ThemePicker({ theme, onChange, compact = false }: { theme: ThemeId; onChange: (theme: ThemeId) => void; compact?: boolean }) {
+  if (compact) {
+    const currentIndex = themeOptions.findIndex((option) => option.id === theme);
+    const nextTheme = themeOptions[(currentIndex + 1) % themeOptions.length];
+    return <button className="mobile-theme-cycle" onClick={() => onChange(nextTheme.id)} title={`${nextTheme.label} temasına geç`} aria-label={`${nextTheme.label} temasına geç`}><Palette size={17} /><span className={`theme-preview theme-${theme}`} /></button>;
+  }
+  return <div className="theme-picker"><Palette size={16} />{themeOptions.map((option) => <button key={option.id} className={`theme-dot theme-${option.id} ${theme === option.id ? "active" : ""}`} onClick={() => onChange(option.id)} title={option.label} aria-label={`${option.label} temasını kullan`} />)}</div>;
+}
+function PersonalSpaceCard({ theme, onThemeChange }: { theme: ThemeId; onThemeChange: (theme: ThemeId) => void }) { return <section className="personal-space-card"><div className="personal-space-icon"><Sparkles size={16} /></div><div><strong>Alanının havası</strong><span>Rengi anında değiştir.</span></div><ThemePicker theme={theme} onChange={onThemeChange} /></section>; }
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) { return <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target) onClose(); }}><section className="modal glass-card"><div className="modal-head"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Pencereyi kapat"><X size={18} /></button></div>{children}</section></div>; }
 function CenteredLoader({ label }: { label: string }) { return <div className="center-loader"><LoaderCircle className="spin" /><span>{label}</span></div>; }
 
 export default App;
