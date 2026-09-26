@@ -214,15 +214,22 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
   const [draft, setDraft] = useState({ title: initialNote?.title || "", body: initialNote?.body || "", pinned: !!initialNote?.pinned });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(initialNote?.$updatedAt || null);
+  const [saveError, setSaveError] = useState("");
   const [mobileEditor, setMobileEditor] = useState(false);
   const savedIdsRef = useRef(new Set(notes.map((n) => n.$id)));
   const lastSavedRef = useRef(new Map(notes.map((n) => [n.$id, JSON.stringify({ title: n.title || "", body: n.body || "", pinned: !!n.pinned })])));
+  const queuedSaveRef = useRef(new Map<string, string>());
   const saveQueueRef = useRef(Promise.resolve());
   const pendingSavesRef = useRef(0);
+  const selectedIdRef = useRef<string | null>(initialNote?.$id || null);
 
   useEffect(() => {
     notes.forEach((n) => savedIdsRef.current.add(n.$id));
   }, [notes]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const filtered = notes.filter((n) => `${n.title} ${n.plainText || n.body || ""}`.toLocaleLowerCase("tr-TR").includes(query.toLocaleLowerCase("tr-TR")));
   const selected = selectedId ? notes.find((n) => n.$id === selectedId) || null : null;
@@ -232,6 +239,7 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
     setSelectedId(id);
     setDraft({ title: "", body: "", pinned: false });
     setSavedAt(null);
+    setSaveError("");
     lastSavedRef.current.delete(id);
     setMobileEditor(true);
   };
@@ -240,9 +248,48 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
     setSelectedId(n.$id);
     setDraft({ title: n.title || "", body: n.body || "", pinned: !!n.pinned });
     setSavedAt(n.$updatedAt);
+    setSaveError("");
     lastSavedRef.current.set(n.$id, JSON.stringify({ title: n.title || "", body: n.body || "", pinned: !!n.pinned }));
     setMobileEditor(true);
   };
+
+  const enqueueSave = useCallback((rowId: string, snapshot: typeof draft) => {
+    const key = JSON.stringify(snapshot);
+    if (lastSavedRef.current.get(rowId) === key || queuedSaveRef.current.get(rowId) === key) return;
+    if (!savedIdsRef.current.has(rowId) && !snapshot.title.trim() && !snapshot.body.trim() && !snapshot.pinned) return;
+
+    queuedSaveRef.current.set(rowId, key);
+    pendingSavesRef.current += 1;
+    setSaving(true);
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      try {
+        const data = {
+          title: snapshot.title.trim() || "İsimsiz not",
+          body: snapshot.body,
+          plainText: snapshot.body.replace(/<[^>]+>/g, " ").trim(),
+          kind: "note",
+          pinned: snapshot.pinned,
+          archived: false,
+        };
+        const row = savedIdsRef.current.has(rowId)
+          ? await tablesDB.updateRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId, data })
+          : await tablesDB.createRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId, data, permissions: ownerPermissions(user.$id) });
+        savedIdsRef.current.add(rowId);
+        lastSavedRef.current.set(rowId, key);
+        if (selectedIdRef.current === rowId) {
+          setSavedAt((row as unknown as Note).$updatedAt || new Date().toISOString());
+          setSaveError("");
+        }
+        await onRefresh();
+      } catch (e) {
+        if (selectedIdRef.current === rowId) setSaveError(e instanceof Error ? e.message : "Not kaydedilemedi.");
+      } finally {
+        if (queuedSaveRef.current.get(rowId) === key) queuedSaveRef.current.delete(rowId);
+        pendingSavesRef.current -= 1;
+        if (pendingSavesRef.current === 0) setSaving(false);
+      }
+    });
+  }, [onRefresh, user.$id]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -253,35 +300,11 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
     const snapshot = { ...draft };
     const rowId = selectedId;
     const timer = window.setTimeout(() => {
-      pendingSavesRef.current += 1;
-      setSaving(true);
-      saveQueueRef.current = saveQueueRef.current
-        .catch(() => undefined)
-        .then(async () => {
-          const data = {
-            title: snapshot.title.trim() || "İsimsiz not",
-            body: snapshot.body,
-            plainText: snapshot.body.replace(/<[^>]+>/g, " ").trim(),
-            kind: "note",
-            pinned: snapshot.pinned,
-            archived: false,
-          };
-          const row = savedIdsRef.current.has(rowId)
-            ? await tablesDB.updateRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId, data })
-            : await tablesDB.createRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId, data, permissions: ownerPermissions(user.$id) });
-          savedIdsRef.current.add(rowId);
-          lastSavedRef.current.set(rowId, key);
-          setSavedAt((row as unknown as Note).$updatedAt || new Date().toISOString());
-          await onRefresh();
-        })
-        .finally(() => {
-          pendingSavesRef.current -= 1;
-          if (pendingSavesRef.current === 0) setSaving(false);
-        });
+      enqueueSave(rowId, snapshot);
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [draft, selectedId, user.$id, onRefresh]);
+  }, [draft, selectedId, enqueueSave]);
 
   const remove = async () => {
     if (!selectedId || !savedIdsRef.current.has(selectedId)) return;
@@ -291,6 +314,7 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
     setSelectedId(null);
     setDraft({ title: "", body: "", pinned: false });
     setSavedAt(null);
+    setSaveError("");
     await onRefresh();
     setMobileEditor(false);
   };
@@ -311,11 +335,11 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
             <button className="mobile-back" onClick={() => setMobileEditor(false)}><ChevronLeft size={18} /> Notlar</button>
             <button className={`tool-button ${draft.pinned ? "active" : ""}`} onClick={() => setDraft((d) => ({ ...d, pinned: !d.pinned }))}><Pin size={16} /> Sabitle</button>
             <div className="spacer" />
-            <span className="autosave-status">{saving ? <><LoaderCircle className="spin" size={14} /> Kaydediliyor</> : savedAt ? <><Check size={14} /> Kaydedildi</> : "Otomatik kayıt"}</span>
+            <span className={`autosave-status ${saveError ? "error" : ""}`} title={saveError || undefined}>{saveError ? "Kayıt başarısız" : saving ? <><LoaderCircle className="spin" size={14} /> Kaydediliyor</> : savedAt ? <><Check size={14} /> Kaydedildi</> : "Otomatik kayıt"}</span>
             {(selected || savedIdsRef.current.has(selectedId || "")) && <button className="icon-button danger" onClick={() => void remove()} aria-label="Notu sil"><Trash2 size={17} /></button>}
           </div>
-          <input className="note-title-input" placeholder="Not başlığı" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
-          <textarea className="note-body-input" placeholder="Buraya yazmaya başla…" value={draft.body} onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))} />
+          <input className="note-title-input" placeholder="Not başlığı" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} onBlur={() => selectedId && enqueueSave(selectedId, { ...draft })} />
+          <textarea className="note-body-input" placeholder="Buraya yazmaya başla…" value={draft.body} onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))} onBlur={() => selectedId && enqueueSave(selectedId, { ...draft })} />
           <div className="editor-foot"><span>{draft.body.trim() ? draft.body.trim().split(/\s+/).length : 0} kelime</span><span>{savedAt ? `Son kayıt ${formatDate(savedAt)}` : "Yeni not"}</span></div>
         </section>
       </div>
