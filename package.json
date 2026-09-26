@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@capacitor/core": "8.5.2",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "appwrite": "28.1.0",
     "jspdf": "4.2.1",
     "lucide-react": "1.48.0",

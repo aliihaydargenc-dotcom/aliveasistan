@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileAudio,
   FileText,
   Home,
   LoaderCircle,
@@ -118,8 +119,8 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="avatar">{(user.name || user.email || "A").slice(0, 1).toLocaleUpperCase("tr-TR")}</div>
-          <div className="user-copy"><strong>{user.name || "Kişisel alan"}</strong><span>{user.email || "Güvenli oturum"}</span></div>
+          <div className="avatar">{(user.name || user.$id || user.email || "A").slice(0, 1).toLocaleUpperCase("tr-TR")}</div>
+          <div className="user-copy"><strong>{user.name || user.$id || "Kişisel alan"}</strong><span>{user.email || "Güvenli oturum"}</span></div>
           <button className="icon-button" onClick={logout} aria-label="Çıkış"><LogOut size={18} /></button>
         </div>
       </aside>
@@ -186,7 +187,7 @@ function HomeView({ user, notes, events, onView, onRefresh }: { user: AppUser; n
   const today = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
   return (
     <>
-      <PageHeader eyebrow={today} title={`Merhaba${user.name ? `, ${user.name.split(" ")[0]}` : ""}`} description="Bugün neyi yakalamak istiyorsun?" />
+      <PageHeader eyebrow={today} title={`Merhaba, ${(user.name || user.$id || "sen").split(" ")[0]}`} description="Bugün neyi yakalamak istiyorsun?" />
       <section className="quick-grid">
         <QuickAction icon={<NotebookPen />} title="Yeni not" text="Düşünceyi kaybetmeden yaz." onClick={() => onView("notes")} />
         <QuickAction accent icon={<Mic />} title="Sesle yakala" text="Konuş, metni düzenle ve sakla." onClick={() => onView("voice")} />
@@ -280,18 +281,23 @@ function VoiceView({ user, onSaved }: { user: AppUser; onSaved: () => Promise<vo
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
+  const recordingRef = useRef(false);
+  const speechBlockedRef = useRef(false);
+  const committedTranscriptRef = useRef("");
 
-  useEffect(() => () => { if (timerRef.current) window.clearInterval(timerRef.current); recognitionRef.current?.stop?.(); recorderRef.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
+  useEffect(() => () => { recordingRef.current = false; if (timerRef.current) window.clearInterval(timerRef.current); recognitionRef.current?.stop?.(); recorderRef.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
 
   const start = async () => {
     setMessage(""); setBlob(null); setElapsed(0); setTranscript(""); chunksRef.current = [];
+    speechBlockedRef.current = false;
+    committedTranscriptRef.current = "";
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
       recorder.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
       recorder.onstop = () => { setBlob(new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" })); stream.getTracks().forEach((t) => t.stop()); };
-      recorder.start(500); setRecording(true);
+      recorder.start(500); recordingRef.current = true; setRecording(true);
       timerRef.current = window.setInterval(() => setElapsed((v) => v + 1), 1000);
 
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -299,20 +305,54 @@ function VoiceView({ user, onSaved }: { user: AppUser; onSaved: () => Promise<vo
         const recognition = new SpeechRecognition();
         recognition.lang = "tr-TR"; recognition.continuous = true; recognition.interimResults = true;
         const finals = new Map<number, string>();
+        const commitFinals = () => {
+          const finalText = [...finals.keys()].sort((a, b) => a - b).map((k) => finals.get(k)).filter(Boolean).join(" ").trim();
+          if (finalText) committedTranscriptRef.current = `${committedTranscriptRef.current} ${finalText}`.trim();
+          finals.clear();
+          if (committedTranscriptRef.current) setTranscript(committedTranscriptRef.current);
+        };
         recognition.onresult = (event: any) => {
           let interim = "";
           for (let i = event.resultIndex; i < event.results.length; i += 1) {
             const text = event.results[i][0].transcript.trim();
             if (event.results[i].isFinal) finals.set(i, text); else interim = text;
           }
-          setTranscript(`${[...finals.keys()].sort((a, b) => a - b).map((k) => finals.get(k)).join(" ")} ${interim}`.trim());
+          const finalText = [...finals.keys()].sort((a, b) => a - b).map((k) => finals.get(k)).filter(Boolean).join(" ");
+          setTranscript(`${committedTranscriptRef.current} ${finalText} ${interim}`.trim());
         };
-        recognitionRef.current = recognition; recognition.start();
+        recognition.onerror = (event: any) => {
+          const code = String(event?.error || "");
+          if (code === "not-allowed" || code === "service-not-allowed") {
+            speechBlockedRef.current = true;
+            setMessage("Ses kaydı devam ediyor ancak konuşmayı yazıya çevirme izni kapalı. Tarayıcı mikrofon/konuşma izinlerini kontrol et.");
+          } else if (code === "network") {
+            setMessage("Ses kaydı devam ediyor ancak konuşmayı yazıya çevirme servisine ulaşılamadı. İnternet bağlantısını kontrol edip tekrar dene.");
+          } else if (code !== "no-speech" && code !== "aborted") {
+            setMessage(`Ses kaydı devam ediyor ancak konuşma tanıma hatası oluştu${code ? `: ${code}` : "."}`);
+          }
+        };
+        recognition.onend = () => {
+          commitFinals();
+          if (!recordingRef.current || speechBlockedRef.current) return;
+          window.setTimeout(() => {
+            if (!recordingRef.current || speechBlockedRef.current) return;
+            try { recognition.start(); } catch { /* already starting */ }
+          }, 250);
+        };
+        recognitionRef.current = recognition;
+        try {
+          recognition.start();
+        } catch {
+          setMessage("Ses kaydı başladı ancak konuşmayı yazıya çevirme başlatılamadı. Tarayıcıyı yenileyip tekrar dene.");
+        }
+      } else {
+        setMessage("Ses kaydı başladı ancak bu tarayıcı konuşmayı yazıya çevirme özelliğini desteklemiyor. Chrome/Edge üzerinde tekrar deneyebilirsin; kaydı yine not olarak saklayabilirsin.");
       }
     } catch { setMessage("Mikrofon izni alınamadı. Tarayıcı veya uygulama izinlerini kontrol et."); }
   };
 
   const stop = () => {
+    recordingRef.current = false;
     recorderRef.current?.stop(); recognitionRef.current?.stop?.(); recognitionRef.current = null; setRecording(false);
     if (timerRef.current) window.clearInterval(timerRef.current); timerRef.current = null;
   };
@@ -382,7 +422,17 @@ function ToolsView() {
   const [qrValue, setQrValue] = useState("https://");
   const [pdfTitle, setPdfTitle] = useState("Notum");
   const [pdfText, setPdfText] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaProgress, setMediaProgress] = useState(0);
+  const [mediaError, setMediaError] = useState("");
+  const [audioUrl, setAudioUrl] = useState("");
+  const [audioName, setAudioName] = useState("ses.mp3");
   const qrRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
 
   const downloadQr = () => {
     const svg = qrRef.current?.querySelector("svg"); if (!svg) return;
@@ -392,13 +442,83 @@ function ToolsView() {
   const downloadPdf = () => {
     const doc = new jsPDF({ unit: "mm", format: "a4" }); doc.setFontSize(20); doc.text(pdfTitle || "Belge", 18, 22); doc.setFontSize(11); const lines = doc.splitTextToSize(pdfText || "", 174); doc.text(lines, 18, 34); doc.save(`${(pdfTitle || "belge").replace(/[^a-zA-Z0-9_-]+/g, "-")}.pdf`);
   };
+
+  const extractAudio = async () => {
+    if (!mediaFile) return;
+    setMediaBusy(true);
+    setMediaError("");
+    setMediaProgress(0);
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl("");
+    }
+
+    try {
+      const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
+        import("@ffmpeg/ffmpeg"),
+        import("@ffmpeg/util"),
+      ]);
+      const ffmpeg = new FFmpeg();
+      ffmpeg.on("progress", ({ progress }) => setMediaProgress(Math.max(0, Math.min(100, Math.round(progress * 100)))));
+
+      const coreBase = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+
+      const extension = mediaFile.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "").slice(0, 10) || "media";
+      const inputName = `input.${extension}`;
+      const outputName = "audio.mp3";
+      await ffmpeg.writeFile(inputName, await fetchFile(mediaFile));
+      const exitCode = await ffmpeg.exec(["-i", inputName, "-vn", "-codec:a", "libmp3lame", "-q:a", "2", outputName]);
+      if (exitCode !== 0) throw new Error("Bu dosyanın ses parçası dönüştürülemedi.");
+
+      const data = await ffmpeg.readFile(outputName);
+      const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data);
+      const audioBytes = new Uint8Array(bytes.byteLength);
+      audioBytes.set(bytes);
+      const blob = new Blob([audioBytes.buffer], { type: "audio/mpeg" });
+      const nextUrl = URL.createObjectURL(blob);
+      const baseName = mediaFile.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9ğüşöçıİĞÜŞÖÇ _-]+/g, "").trim() || "ses";
+      setAudioName(`${baseName}.mp3`);
+      setAudioUrl(nextUrl);
+      setMediaProgress(100);
+      ffmpeg.terminate();
+    } catch (err) {
+      setMediaError(err instanceof Error ? err.message : "Ses çıkarma tamamlanamadı.");
+    } finally {
+      setMediaBusy(false);
+    }
+  };
+
+  const downloadAudio = () => {
+    if (!audioUrl) return;
+    const a = document.createElement("a");
+    a.href = audioUrl;
+    a.download = audioName;
+    a.click();
+  };
+
   return (
     <>
       <PageHeader eyebrow="Araç merkezi" title="Küçük işler için ayrı uygulama arama" description="Sık kullandığın araçlar aynı arayüzde; yeni modüller bu merkeze eklenebilir." />
       <section className="tools-grid">
         <article className="tool-card glass-card"><div className="tool-card-head"><div className="tool-icon"><QrCode /></div><div><h2>QR oluştur</h2><p>Metin veya bağlantıyı anında QR’a çevir.</p></div></div><label>İçerik<input value={qrValue} onChange={(e) => setQrValue(e.target.value)} /></label><div className="qr-preview" ref={qrRef}><QRCodeSVG value={qrValue || " "} size={180} level="M" bgColor="transparent" fgColor="#24194f" /></div><button className="secondary-button" onClick={downloadQr}><Download size={17} /> SVG indir</button></article>
         <article className="tool-card glass-card"><div className="tool-card-head"><div className="tool-icon"><FileText /></div><div><h2>Metinden PDF</h2><p>Hızlı bir metni sade PDF dosyasına dönüştür.</p></div></div><label>Belge adı<input value={pdfTitle} onChange={(e) => setPdfTitle(e.target.value)} /></label><label>Metin<textarea rows={8} value={pdfText} onChange={(e) => setPdfText(e.target.value)} placeholder="PDF'e dönüşecek metin…" /></label><button className="secondary-button" onClick={downloadPdf}><Download size={17} /> PDF indir</button></article>
-        <article className="tool-card glass-card roadmap-card"><div className="tool-card-head"><div className="tool-icon"><MoreHorizontal /></div><div><h2>Genişlemeye hazır</h2><p>Görsel sıkıştırma, dosya dönüştürme, renk araçları ve kullanıcıya ait medya dosyalarından ses çıkarma aynı merkez yapısına eklenebilir.</p></div></div><div className="chip-row"><span>Görsel</span><span>Dosya</span><span>Metin</span><span>Medya</span></div></article>
+        <article className="tool-card glass-card media-tool-card">
+          <div className="tool-card-head"><div className="tool-icon"><FileAudio /></div><div><h2>Medyadan MP3 çıkar</h2><p>Sana ait veya kullanım iznin olan ses/video dosyasını cihazında MP3’e dönüştür.</p></div></div>
+          <label className="media-drop">
+            <span>{mediaFile ? mediaFile.name : "Ses veya video dosyası seç"}</span>
+            <small>{mediaFile ? `${(mediaFile.size / 1024 / 1024).toFixed(1)} MB` : "MP4, MOV, WEBM, MP3, M4A ve tarayıcının okuyabildiği diğer medya dosyaları"}</small>
+            <input type="file" accept="audio/*,video/*" onChange={(e) => { setMediaFile(e.target.files?.[0] || null); setMediaError(""); if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(""); } }} />
+          </label>
+          {mediaBusy && <div className="media-progress"><div className="media-progress-bar"><span style={{ width: `${Math.max(mediaProgress, 4)}%` }} /></div><span>{mediaProgress < 5 ? "Dönüştürme motoru hazırlanıyor" : `%${mediaProgress}`}</span></div>}
+          {mediaError && <p className="form-error">{mediaError}</p>}
+          {audioUrl && <div className="media-result"><audio controls src={audioUrl} /><button className="secondary-button" onClick={downloadAudio}><Download size={17} /> {audioName} indir</button></div>}
+          <button className="primary-button" disabled={!mediaFile || mediaBusy} onClick={() => void extractAudio()}>{mediaBusy ? <LoaderCircle className="spin" size={18} /> : <FileAudio size={18} />}{mediaBusy ? "Dönüştürülüyor" : "MP3 çıkar"}</button>
+        </article>
+        <article className="tool-card glass-card roadmap-card"><div className="tool-card-head"><div className="tool-icon"><MoreHorizontal /></div><div><h2>Genişlemeye hazır</h2><p>Görsel sıkıştırma, dosya dönüştürme ve renk araçları aynı merkez yapısına eklenebilir.</p></div></div><div className="chip-row"><span>Görsel</span><span>Dosya</span><span>Metin</span><span>Medya</span></div></article>
       </section>
     </>
   );
