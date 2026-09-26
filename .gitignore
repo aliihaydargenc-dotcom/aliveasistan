@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+android/.gradle/
+android/app/build/
+android/build/
+.DS_Store
+*.log
+.playwright-mcp/
+alive-login-*.png
