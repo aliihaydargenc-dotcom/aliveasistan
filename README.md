@@ -10,9 +10,14 @@ Mobil tabanı güçlü kişisel çalışma alanı: not, sesli not, takvim ve kü
 - Mikrofon kaydı, desteklenen tarayıcılarda Türkçe konuşmayı metne çevirme ve kayıt sonrası metni düzenleme.
 - Appwrite Storage üzerinde kullanıcıya özel ses dosyaları.
 - Aylık takvim ve tarih işaretleme.
-- QR oluşturma ve SVG indirme.
-- Metinden PDF oluşturma.
+- QR oluşturma; SVG ve yüksek çözünürlüklü PNG indirme.
+- Türkçe karakterleri koruyan çok sayfalı PDF oluşturma.
+- Görsel sıkıştırma, yeniden boyutlandırma ve JPG/PNG/WebP dönüşümü.
+- JSON düzenleme/küçültme, metin temizleme ve SHA-256 dosya doğrulama.
+- Medya dosyasından tarayıcı içinde MP3 çıkarma.
 - PWA manifest/service worker ve Android APK build hattı.
+
+Araç merkezi API anahtarı gerektirmez. Dosya ve metin işlemleri tarayıcıda yapılır; kullanıcı dosyaları uygulama sunucusuna yüklenmez. Görsel işleme için MIT lisanslı [CompressorJS](https://github.com/fengyuanchen/compressorjs), medya dönüşümü için FFmpeg.wasm kullanılır.
 
 ## Appwrite
 

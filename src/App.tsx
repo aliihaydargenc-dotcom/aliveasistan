@@ -6,21 +6,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Download,
-  FileAudio,
-  FileText,
   Home,
   LoaderCircle,
   LockKeyhole,
   LogOut,
   Mic,
-  MoreHorizontal,
   NotebookPen,
   Pause,
   Palette,
   Pin,
   Plus,
-  QrCode,
   Search,
   Shapes,
   Sparkles,
@@ -31,9 +26,8 @@ import {
   X,
 } from "lucide-react";
 import { ID, Permission, Query, Role } from "appwrite";
-import { QRCodeSVG } from "qrcode.react";
-import { jsPDF } from "jspdf";
 import { account, config, storage, tablesDB } from "./appwrite";
+import { ToolsView } from "./ToolsView";
 import type { AppUser, CalendarEvent, Note, ViewId } from "./types";
 
 const navItems: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
@@ -551,112 +545,6 @@ function CalendarView({ user, events, onRefresh }: { user: AppUser; events: Cale
       </section>
       <Panel title="Yaklaşan kayıtlar">{events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 8).map((ev) => <div className="event-row" key={ev.$id}><div><strong>{ev.title}</strong><span>{formatDate(ev.startAt)}</span></div><button className="icon-button danger" onClick={() => void remove(ev.$id)} aria-label={`${ev.title} kaydını sil`}><Trash2 size={16} /></button></div>)}</Panel>
       {selectedDay && <Modal onClose={() => setSelectedDay(null)} title={`${selectedDay.getDate()} ${new Intl.DateTimeFormat("tr-TR", { month: "long" }).format(selectedDay)}`}><form className="stack-form" onSubmit={add}><label>Başlık<input value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus /></label><label>Tarih ve saat<input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} required /></label><label>Not<textarea rows={4} value={note} onChange={(e) => setNote(e.target.value)} /></label><button className="primary-button" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />} Takvime ekle</button></form></Modal>}
-    </>
-  );
-}
-
-function ToolsView() {
-  const [qrValue, setQrValue] = useState("https://");
-  const [pdfTitle, setPdfTitle] = useState("Notum");
-  const [pdfText, setPdfText] = useState("");
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaBusy, setMediaBusy] = useState(false);
-  const [mediaProgress, setMediaProgress] = useState(0);
-  const [mediaError, setMediaError] = useState("");
-  const [audioUrl, setAudioUrl] = useState("");
-  const [audioName, setAudioName] = useState("ses.mp3");
-  const qrRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => () => {
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-  }, [audioUrl]);
-
-  const downloadQr = () => {
-    const svg = qrRef.current?.querySelector("svg"); if (!svg) return;
-    const data = new XMLSerializer().serializeToString(svg); const blob = new Blob([data], { type: "image/svg+xml;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "alive-qr.svg"; a.click(); URL.revokeObjectURL(a.href);
-  };
-  const downloadPdf = () => {
-    const doc = new jsPDF({ unit: "mm", format: "a4" }); doc.setFontSize(20); doc.text(pdfTitle || "Belge", 18, 22); doc.setFontSize(11); const lines = doc.splitTextToSize(pdfText || "", 174); doc.text(lines, 18, 34); doc.save(`${(pdfTitle || "belge").replace(/[^a-zA-Z0-9_-]+/g, "-")}.pdf`);
-  };
-
-  const extractAudio = async () => {
-    if (!mediaFile) return;
-    setMediaBusy(true);
-    setMediaError("");
-    setMediaProgress(0);
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-      setAudioUrl("");
-    }
-
-    try {
-      const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
-        import("@ffmpeg/ffmpeg"),
-        import("@ffmpeg/util"),
-      ]);
-      const ffmpeg = new FFmpeg();
-      ffmpeg.on("progress", ({ progress }) => setMediaProgress(Math.max(0, Math.min(100, Math.round(progress * 100)))));
-
-      const coreBase = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, "application/wasm"),
-      });
-
-      const extension = mediaFile.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "").slice(0, 10) || "media";
-      const inputName = `input.${extension}`;
-      const outputName = "audio.mp3";
-      await ffmpeg.writeFile(inputName, await fetchFile(mediaFile));
-      const exitCode = await ffmpeg.exec(["-i", inputName, "-vn", "-codec:a", "libmp3lame", "-q:a", "2", outputName]);
-      if (exitCode !== 0) throw new Error("Bu dosyanın ses parçası dönüştürülemedi.");
-
-      const data = await ffmpeg.readFile(outputName);
-      const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data);
-      const audioBytes = new Uint8Array(bytes.byteLength);
-      audioBytes.set(bytes);
-      const blob = new Blob([audioBytes.buffer], { type: "audio/mpeg" });
-      const nextUrl = URL.createObjectURL(blob);
-      const baseName = mediaFile.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9ğüşöçıİĞÜŞÖÇ _-]+/g, "").trim() || "ses";
-      setAudioName(`${baseName}.mp3`);
-      setAudioUrl(nextUrl);
-      setMediaProgress(100);
-      ffmpeg.terminate();
-    } catch (err) {
-      setMediaError(err instanceof Error ? err.message : "Ses çıkarma tamamlanamadı.");
-    } finally {
-      setMediaBusy(false);
-    }
-  };
-
-  const downloadAudio = () => {
-    if (!audioUrl) return;
-    const a = document.createElement("a");
-    a.href = audioUrl;
-    a.download = audioName;
-    a.click();
-  };
-
-  return (
-    <>
-      <PageHeader eyebrow="Araç merkezi" title="Küçük işler için ayrı uygulama arama" description="Sık kullandığın araçlar aynı arayüzde; yeni modüller bu merkeze eklenebilir." />
-      <section className="tools-grid">
-        <article className="tool-card glass-card"><div className="tool-card-head"><div className="tool-icon"><QrCode /></div><div><h2>QR oluştur</h2><p>Metin veya bağlantıyı anında QR’a çevir.</p></div></div><label>İçerik<input value={qrValue} onChange={(e) => setQrValue(e.target.value)} /></label><div className="qr-preview" ref={qrRef}><QRCodeSVG value={qrValue || " "} size={180} level="M" bgColor="transparent" fgColor="#24194f" /></div><button className="secondary-button" onClick={downloadQr}><Download size={17} /> SVG indir</button></article>
-        <article className="tool-card glass-card"><div className="tool-card-head"><div className="tool-icon"><FileText /></div><div><h2>Metinden PDF</h2><p>Hızlı bir metni sade PDF dosyasına dönüştür.</p></div></div><label>Belge adı<input value={pdfTitle} onChange={(e) => setPdfTitle(e.target.value)} /></label><label>Metin<textarea rows={8} value={pdfText} onChange={(e) => setPdfText(e.target.value)} placeholder="PDF'e dönüşecek metin…" /></label><button className="secondary-button" onClick={downloadPdf}><Download size={17} /> PDF indir</button></article>
-        <article className="tool-card glass-card media-tool-card">
-          <div className="tool-card-head"><div className="tool-icon"><FileAudio /></div><div><h2>Medyadan MP3 çıkar</h2><p>Sana ait veya kullanım iznin olan ses/video dosyasını cihazında MP3’e dönüştür.</p></div></div>
-          <label className="media-drop">
-            <span>{mediaFile ? mediaFile.name : "Ses veya video dosyası seç"}</span>
-            <small>{mediaFile ? `${(mediaFile.size / 1024 / 1024).toFixed(1)} MB` : "MP4, MOV, WEBM, MP3, M4A ve tarayıcının okuyabildiği diğer medya dosyaları"}</small>
-            <input type="file" accept="audio/*,video/*" onChange={(e) => { setMediaFile(e.target.files?.[0] || null); setMediaError(""); if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(""); } }} />
-          </label>
-          {mediaBusy && <div className="media-progress"><div className="media-progress-bar"><span style={{ width: `${Math.max(mediaProgress, 4)}%` }} /></div><span>{mediaProgress < 5 ? "Dönüştürme motoru hazırlanıyor" : `%${mediaProgress}`}</span></div>}
-          {mediaError && <p className="form-error">{mediaError}</p>}
-          {audioUrl && <div className="media-result"><audio controls src={audioUrl} /><button className="secondary-button" onClick={downloadAudio}><Download size={17} /> {audioName} indir</button></div>}
-          <button className="primary-button" disabled={!mediaFile || mediaBusy} onClick={() => void extractAudio()}>{mediaBusy ? <LoaderCircle className="spin" size={18} /> : <FileAudio size={18} />}{mediaBusy ? "Dönüştürülüyor" : "MP3 çıkar"}</button>
-        </article>
-        <article className="tool-card glass-card roadmap-card"><div className="tool-card-head"><div className="tool-icon"><MoreHorizontal /></div><div><h2>Genişlemeye hazır</h2><p>Görsel sıkıştırma, dosya dönüştürme ve renk araçları aynı merkez yapısına eklenebilir.</p></div></div><div className="chip-row"><span>Görsel</span><span>Dosya</span><span>Metin</span><span>Medya</span></div></article>
-      </section>
     </>
   );
 }

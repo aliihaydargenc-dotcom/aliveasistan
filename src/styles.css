@@ -28,11 +28,11 @@ html[data-theme="forest"] { --accent:#45845d; --accent-2:#b4c86d; --accent-soft:
 html, body, #root { min-height: 100%; margin: 0; }
 html, body { overflow-x: clip; }
 body { min-width: 0; min-height: 100vh; background: radial-gradient(circle at 15% 0%, var(--page-glow) 0, transparent 34%), #f7f5fb; transition: background .45s ease; }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(118,89,255,.22); outline-offset: 2px; }
-input, textarea { border: 1px solid var(--line); background: rgba(255,255,255,.86); color: var(--ink); border-radius: 14px; padding: 12px 14px; width: 100%; transition: border .2s, box-shadow .2s, background .2s; }
-input:focus, textarea:focus { border-color: rgba(118,89,255,.42); box-shadow: 0 0 0 4px rgba(118,89,255,.07); background: white; outline: 0; }
+input, textarea, select { border: 1px solid var(--line); background: rgba(255,255,255,.86); color: var(--ink); border-radius: 14px; padding: 12px 14px; width: 100%; transition: border .2s, box-shadow .2s, background .2s; }
+input:focus, textarea:focus, select:focus { border-color: rgba(118,89,255,.42); box-shadow: 0 0 0 4px rgba(118,89,255,.07); background: white; outline: 0; }
 textarea { resize: vertical; }
 label { display: grid; gap: 7px; font-size: 13px; font-weight: 650; color: #5f5870; }
 .glass { backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); background: var(--glass); border: 1px solid rgba(255,255,255,.8); }
@@ -336,4 +336,60 @@ label { display: grid; gap: 7px; font-size: 13px; font-weight: 650; color: #5f58
   .login-preview-stack { display:none; }
   .login-card { margin-top:-25px; min-height:calc(100vh - 285px); border-radius:28px 28px 0 0; padding:32px 24px calc(32px + env(safe-area-inset-bottom)); align-content:start; }
   .login-card h2 { font-size:28px; }
+}
+
+/* Local tools workbench */
+.local-tools-banner { display:flex; align-items:center; gap:12px; margin:-8px 0 18px; padding:14px 17px; border:1px solid rgba(var(--accent-rgb),.12); border-radius:18px; background:linear-gradient(110deg,rgba(var(--accent-rgb),.10),rgba(255,255,255,.72)); color:var(--accent); }
+.local-tools-banner>div:nth-child(2) { min-width:0; }
+.local-tools-banner strong,.local-tools-banner span { display:block; }
+.local-tools-banner strong { color:var(--ink); font-size:12px; }
+.local-tools-banner div>span { color:var(--muted); font-size:9px; margin-top:2px; }
+.local-badges { margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.local-badges span { color:var(--accent)!important; background:rgba(255,255,255,.72); border:1px solid rgba(var(--accent-rgb),.10); border-radius:999px; padding:6px 9px; font-size:8px!important; font-weight:760; margin:0!important; }
+.tool-card { min-width:0; }
+.tool-card-head { position:relative; z-index:1; }
+.tool-card .primary-button,.tool-card>.secondary-button { width:100%; }
+.tool-actions { display:flex; gap:8px; align-items:stretch; }
+.tool-actions .primary-button,.tool-actions .secondary-button { flex:1; min-width:0; }
+.tool-actions.wrap { flex-wrap:wrap; }
+.tool-actions.wrap button { flex:1 1 auto; }
+.featured-tool { background:linear-gradient(155deg,rgba(255,255,255,.95),rgba(var(--accent-rgb),.055)); }
+.image-settings { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.image-settings label { position:relative; }
+.image-settings label small { position:absolute; right:12px; bottom:13px; color:#9a93a4; font-size:9px; pointer-events:none; }
+.image-settings label:first-child input { padding-right:50px; }
+.range-label { grid-template-columns:1fr auto; align-items:center; }
+.range-label strong { color:var(--accent); font-size:11px; }
+.range-label input { grid-column:1/-1; padding:0; accent-color:var(--accent); box-shadow:none; border:0; background:transparent; }
+.image-result { display:grid; gap:10px; padding:11px; border-radius:17px; background:rgba(255,255,255,.66); border:1px solid rgba(var(--accent-rgb),.08); }
+.image-comparison { display:grid; grid-template-columns:1fr 1fr; gap:7px; height:120px; }
+.image-comparison img { width:100%; height:120px; object-fit:cover; border-radius:12px; background:#f2eff6; }
+.result-stats { display:flex; align-items:center; gap:14px; }
+.result-stats span { color:var(--ink); font-size:11px; font-weight:760; }
+.result-stats small { color:var(--muted); display:block; font-size:8px; font-weight:600; margin-bottom:2px; }
+.result-stats strong { margin-left:auto; padding:5px 7px; border-radius:8px; font-size:9px; }
+.result-stats .positive { color:#267b50; background:#eaf8ef; }
+.result-stats .negative { color:#a74358; background:#fff0f3; }
+.code-input,.hash-output { font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+.code-input { font-size:11px; line-height:1.65; }
+.text-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+.text-stats span { padding:9px; border-radius:12px; background:rgba(var(--accent-rgb),.06); color:var(--muted); font-size:8px; text-align:center; }
+.text-stats strong { display:block; color:var(--ink); font-size:15px; margin-bottom:2px; }
+.hash-tool { grid-column:1/-1; grid-template-columns:minmax(250px,.8fr) minmax(0,1.2fr); align-items:center; }
+.hash-tool .tool-card-head { grid-column:1/-1; }
+.hash-output { min-width:0; overflow-wrap:anywhere; padding:14px; border-radius:14px; background:#282238; color:#dcd5ff; font-size:10px; line-height:1.6; }
+.hash-tool .tool-actions { grid-column:1/-1; justify-content:flex-end; }
+.hash-tool .tool-actions button { flex:0 1 auto; }
+
+@media (max-width: 760px) {
+  .local-tools-banner { align-items:flex-start; margin-top:-6px; }
+  .local-badges { display:none; }
+  .tool-actions { flex-wrap:wrap; }
+  .tool-actions button { min-height:44px; flex:1 1 120px; }
+  .image-settings { grid-template-columns:1fr; }
+  .image-comparison { height:100px; }
+  .image-comparison img { height:100px; }
+  .hash-tool { grid-template-columns:1fr; }
+  .hash-tool .tool-card-head,.hash-tool .tool-actions { grid-column:auto; }
+  .hash-tool .tool-actions button { flex:1 1 140px; }
 }
