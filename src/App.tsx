@@ -208,38 +208,91 @@ function HomeView({ user, notes, events, onView, onRefresh }: { user: AppUser; n
 }
 
 function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; onRefresh: () => Promise<void> }) {
+  const initialNote = notes[0] || null;
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Note | null>(notes[0] || null);
-  const [draft, setDraft] = useState({ title: selected?.title || "", body: selected?.body || "", pinned: !!selected?.pinned });
+  const [selectedId, setSelectedId] = useState<string | null>(initialNote?.$id || null);
+  const [draft, setDraft] = useState({ title: initialNote?.title || "", body: initialNote?.body || "", pinned: !!initialNote?.pinned });
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(initialNote?.$updatedAt || null);
   const [mobileEditor, setMobileEditor] = useState(false);
+  const savedIdsRef = useRef(new Set(notes.map((n) => n.$id)));
+  const lastSavedRef = useRef(new Map(notes.map((n) => [n.$id, JSON.stringify({ title: n.title || "", body: n.body || "", pinned: !!n.pinned })])));
+  const saveQueueRef = useRef(Promise.resolve());
+  const pendingSavesRef = useRef(0);
 
   useEffect(() => {
-    if (selected) setDraft({ title: selected.title, body: selected.body || "", pinned: !!selected.pinned });
-  }, [selected]);
+    notes.forEach((n) => savedIdsRef.current.add(n.$id));
+  }, [notes]);
 
   const filtered = notes.filter((n) => `${n.title} ${n.plainText || n.body || ""}`.toLocaleLowerCase("tr-TR").includes(query.toLocaleLowerCase("tr-TR")));
-  const newNote = () => { setSelected(null); setDraft({ title: "", body: "", pinned: false }); setMobileEditor(true); };
-  const choose = (n: Note) => { setSelected(n); setMobileEditor(true); };
+  const selected = selectedId ? notes.find((n) => n.$id === selectedId) || null : null;
 
-  const save = async () => {
-    if (!draft.title.trim() && !draft.body.trim()) return;
-    setSaving(true);
-    const data = { title: draft.title.trim() || "İsimsiz not", body: draft.body, plainText: draft.body.replace(/<[^>]+>/g, " ").trim(), kind: "note", pinned: draft.pinned, archived: false };
-    try {
-      if (selected) {
-        await tablesDB.updateRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId: selected.$id, data });
-      } else {
-        await tablesDB.createRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId: ID.unique(), data, permissions: ownerPermissions(user.$id) });
-      }
-      await onRefresh(); setMobileEditor(false);
-    } finally { setSaving(false); }
+  const newNote = () => {
+    const id = ID.unique();
+    setSelectedId(id);
+    setDraft({ title: "", body: "", pinned: false });
+    setSavedAt(null);
+    lastSavedRef.current.delete(id);
+    setMobileEditor(true);
   };
 
+  const choose = (n: Note) => {
+    setSelectedId(n.$id);
+    setDraft({ title: n.title || "", body: n.body || "", pinned: !!n.pinned });
+    setSavedAt(n.$updatedAt);
+    lastSavedRef.current.set(n.$id, JSON.stringify({ title: n.title || "", body: n.body || "", pinned: !!n.pinned }));
+    setMobileEditor(true);
+  };
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const key = JSON.stringify(draft);
+    if (lastSavedRef.current.get(selectedId) === key) return;
+    if (!savedIdsRef.current.has(selectedId) && !draft.title.trim() && !draft.body.trim() && !draft.pinned) return;
+
+    const snapshot = { ...draft };
+    const rowId = selectedId;
+    const timer = window.setTimeout(() => {
+      pendingSavesRef.current += 1;
+      setSaving(true);
+      saveQueueRef.current = saveQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const data = {
+            title: snapshot.title.trim() || "İsimsiz not",
+            body: snapshot.body,
+            plainText: snapshot.body.replace(/<[^>]+>/g, " ").trim(),
+            kind: "note",
+            pinned: snapshot.pinned,
+            archived: false,
+          };
+          const row = savedIdsRef.current.has(rowId)
+            ? await tablesDB.updateRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId, data })
+            : await tablesDB.createRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId, data, permissions: ownerPermissions(user.$id) });
+          savedIdsRef.current.add(rowId);
+          lastSavedRef.current.set(rowId, key);
+          setSavedAt((row as unknown as Note).$updatedAt || new Date().toISOString());
+          await onRefresh();
+        })
+        .finally(() => {
+          pendingSavesRef.current -= 1;
+          if (pendingSavesRef.current === 0) setSaving(false);
+        });
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [draft, selectedId, user.$id, onRefresh]);
+
   const remove = async () => {
-    if (!selected) return;
-    await tablesDB.deleteRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId: selected.$id });
-    setSelected(null); setDraft({ title: "", body: "", pinned: false }); await onRefresh(); setMobileEditor(false);
+    if (!selectedId || !savedIdsRef.current.has(selectedId)) return;
+    await tablesDB.deleteRow({ databaseId: config.databaseId, tableId: config.notesTableId, rowId: selectedId });
+    savedIdsRef.current.delete(selectedId);
+    lastSavedRef.current.delete(selectedId);
+    setSelectedId(null);
+    setDraft({ title: "", body: "", pinned: false });
+    setSavedAt(null);
+    await onRefresh();
+    setMobileEditor(false);
   };
 
   return (
@@ -249,7 +302,7 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
         <section className="notes-list glass-card">
           <div className="search-box"><Search size={17} /><input placeholder="Notlarda ara" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
           <div className="note-cards">
-            {filtered.map((n) => <button key={n.$id} className={`note-card ${selected?.$id === n.$id ? "active" : ""}`} onClick={() => choose(n)}><div className="note-card-title"><strong>{n.title}</strong>{n.pinned && <Pin size={14} />}</div><p>{(n.plainText || n.body || "Boş not").slice(0, 100)}</p><span>{formatDate(n.$updatedAt)}</span></button>)}
+            {filtered.map((n) => <button key={n.$id} className={`note-card ${selectedId === n.$id ? "active" : ""}`} onClick={() => choose(n)}><div className="note-card-title"><strong>{n.title}</strong>{n.pinned && <Pin size={14} />}</div><p>{(n.plainText || n.body || "Boş not").slice(0, 100)}</p><span>{formatDate(n.$updatedAt)}</span></button>)}
             {!filtered.length && <EmptyMini text="Bu aramada not bulunamadı." />}
           </div>
         </section>
@@ -258,12 +311,12 @@ function NotesView({ user, notes, onRefresh }: { user: AppUser; notes: Note[]; o
             <button className="mobile-back" onClick={() => setMobileEditor(false)}><ChevronLeft size={18} /> Notlar</button>
             <button className={`tool-button ${draft.pinned ? "active" : ""}`} onClick={() => setDraft((d) => ({ ...d, pinned: !d.pinned }))}><Pin size={16} /> Sabitle</button>
             <div className="spacer" />
-            {selected && <button className="icon-button danger" onClick={() => void remove()} aria-label="Notu sil"><Trash2 size={17} /></button>}
-            <button className="primary-button compact-btn" onClick={() => void save()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />} Kaydet</button>
+            <span className="autosave-status">{saving ? <><LoaderCircle className="spin" size={14} /> Kaydediliyor</> : savedAt ? <><Check size={14} /> Kaydedildi</> : "Otomatik kayıt"}</span>
+            {(selected || savedIdsRef.current.has(selectedId || "")) && <button className="icon-button danger" onClick={() => void remove()} aria-label="Notu sil"><Trash2 size={17} /></button>}
           </div>
           <input className="note-title-input" placeholder="Not başlığı" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
           <textarea className="note-body-input" placeholder="Buraya yazmaya başla…" value={draft.body} onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))} />
-          <div className="editor-foot"><span>{draft.body.trim() ? draft.body.trim().split(/\s+/).length : 0} kelime</span><span>{selected ? `Son düzenleme ${formatDate(selected.$updatedAt)}` : "Yeni not"}</span></div>
+          <div className="editor-foot"><span>{draft.body.trim() ? draft.body.trim().split(/\s+/).length : 0} kelime</span><span>{savedAt ? `Son kayıt ${formatDate(savedAt)}` : "Yeni not"}</span></div>
         </section>
       </div>
     </>
