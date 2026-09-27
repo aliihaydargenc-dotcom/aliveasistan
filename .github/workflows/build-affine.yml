@@ -1,0 +1,56 @@
+name: Build AFFiNE for Appwrite
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: affine-appwrite-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - name: Checkout bootstrap repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build AFFiNE web
+        run: npm run build
+
+      - name: Prepare static deployment branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/affine-appwrite
+          mkdir -p /tmp/affine-appwrite
+          cp -a dist /tmp/affine-appwrite/dist
+          cat > /tmp/affine-appwrite/README.md <<'EOF'
+          # Alive AFFiNE deployment
+
+          Generated automatically from AFFiNE v0.27.4 for Appwrite Sites.
+          Do not edit this branch manually.
+          EOF
+
+      - name: Publish deploy branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan appwrite-static-build
+          git rm -rf .
+          cp -a /tmp/affine-appwrite/. .
+          git add -A
+          git commit -m "build: AFFiNE v0.27.4 static Appwrite bundle"
+          git push --force origin HEAD:deploy
