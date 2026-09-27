@@ -21,28 +21,45 @@ export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
 
 corepack enable
 
-# Appwrite Sites icin yalnizca web uygulamasinin gerektirdigi workspace'leri kur.
-yarn workspaces focus @affine/monorepo @affine/web
+# Appwrite Sites icin mobil web uygulamasinin gerektirdigi workspace'leri kur.
+yarn workspaces focus @affine/monorepo @affine/mobile
 
-# AFFiNE Turkceyi zaten destekliyor. Bu kurulumda ilk acilisi Turkce yap,
-# eksik cevirilerde Ingilizceyi yedek dil olarak kullan.
+# Turkceyi hem i18next varsayilani hem de AFFiNE global ayar varsayilani yap.
 node <<'NODE'
 const fs = require('fs');
-const path = 'packages/frontend/i18n/src/i18next.ts';
-let src = fs.readFileSync(path, 'utf8');
-src = src.replace("const defaultLng: Language = 'en';", "const defaultLng: Language = 'tr';");
-src = src.replace(
+
+const i18nextPath = 'packages/frontend/i18n/src/i18next.ts';
+let i18nextSrc = fs.readFileSync(i18nextPath, 'utf8');
+i18nextSrc = i18nextSrc.replace(
+  "const defaultLng: Language = 'en';",
+  "const defaultLng: Language = 'tr';"
+);
+i18nextSrc = i18nextSrc.replace(
   'const fallbacks: string[] = [defaultLng];',
   "const fallbacks: string[] = [defaultLng, 'en'];"
 );
-fs.writeFileSync(path, src);
+if (!i18nextSrc.includes("const defaultLng: Language = 'tr';")) {
+  throw new Error('Turkce i18next patch uygulanamadi');
+}
+fs.writeFileSync(i18nextPath, i18nextSrc);
+
+const entityPath = 'packages/frontend/core/src/modules/i18n/entities/i18n.ts';
+let entitySrc = fs.readFileSync(entityPath, 'utf8');
+entitySrc = entitySrc.replace(
+  "const language = this.currentLanguageKey$.value ?? 'en';",
+  "const language = this.currentLanguageKey$.value ?? 'tr';"
+);
+if (!entitySrc.includes("const language = this.currentLanguageKey$.value ?? 'tr';")) {
+  throw new Error('Turkce global ayar patch uygulanamadi');
+}
+fs.writeFileSync(entityPath, entitySrc);
 NODE
 
-echo "==> AFFiNE web build"
-BUILD_TYPE=stable DISTRIBUTION=web PUBLIC_PATH=/ yarn affine @affine/web build
+echo "==> AFFiNE mobile web build"
+BUILD_TYPE=stable PUBLIC_PATH=/ yarn affine @affine/mobile build
 
 cd ..
 mkdir -p "$OUT_DIR"
-cp -a "$SRC_DIR/packages/frontend/apps/web/dist/." "$OUT_DIR/"
+cp -a "$SRC_DIR/packages/frontend/apps/mobile/dist/." "$OUT_DIR/"
 
 echo "==> Build tamamlandi: $OUT_DIR"
