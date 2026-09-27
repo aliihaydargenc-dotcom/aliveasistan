@@ -1,11 +1,4 @@
-node_modules/
+.affine-src/
 dist/
-.env
-.env.local
-android/.gradle/
-android/app/build/
-android/build/
+node_modules/
 .DS_Store
-*.log
-.playwright-mcp/
-alive-login-*.png
